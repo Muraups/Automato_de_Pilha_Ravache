@@ -15,63 +15,70 @@
 #include <stack>
 #include <tuple>
 #include <unordered_map>
-
+ 
 using namespace std;
-
+ 
 struct Transicao {
     string proximoEstado;
     string empilhar; // vazio = nao empilha nada
 };
-
+ 
 struct ChaveHash {
     size_t operator()(const tuple<string, char, char>& k) const {
         auto [estado, simbolo, topo] = k;
         return hash<string>()(estado) ^ (hash<char>()(simbolo) << 8) ^ (hash<char>()(topo) << 16);
     }
 };
-
+ 
 struct Config {
     string estado;
     size_t pos;
     stack<char> pilha;
 };
-
+ 
 class PDA {
 public:
     string estadoInicial;
     char simboloInicialPilha;
     vector<string> estadosAceitacao;
     unordered_map<tuple<string, char, char>, vector<Transicao>, ChaveHash> transicoes;
-
+ 
     void addTransicao(string de, char simbolo, char topo, string para, string empilhar) {
         transicoes[{de, simbolo, topo}].push_back({para, empilhar});
     }
-
+ 
     bool aceita(const string& entrada, bool mostrarPassos) {
         stack<char> pilhaInicial;
         pilhaInicial.push(simboloInicialPilha);
-
+ 
         vector<Config> agenda;
         agenda.push_back({estadoInicial, 0, pilhaInicial});
-
+ 
         if (mostrarPassos) cout << "\nProcessando \"" << entrada << "\"\n";
-
+ 
         while (!agenda.empty()) {
             Config atual = agenda.back();
             agenda.pop_back();
+ 
             if (mostrarPassos) imprimeConfig(atual.estado, atual.pos, atual.pilha, entrada);
+ 
             if (atual.pos == entrada.size() && ehAceitacao(atual.estado)) {
                 if (mostrarPassos) cout << "-> ACEITO\n";
                 return true;
             }
+ 
             if (atual.pilha.empty()) continue;
             char topo = atual.pilha.top();
+ 
+            // transicao epsilon (nao consome entrada)
             auto chaveEps = make_tuple(atual.estado, '\0', topo);
             auto itEps = transicoes.find(chaveEps);
             if (itEps != transicoes.end()) {
                 for (auto& t : itEps->second)
                     agenda.push_back(aplica(atual, t));
             }
+ 
+            // transicao consumindo o proximo simbolo de entrada
             if (atual.pos < entrada.size()) {
                 auto chave = make_tuple(atual.estado, entrada[atual.pos], topo);
                 auto it = transicoes.find(chave);
@@ -84,14 +91,18 @@ public:
                 }
             }
         }
+ 
         if (mostrarPassos) cout << "-> REJEITADO\n";
         return false;
     }
+ 
 private:
     bool ehAceitacao(const string& estado) {
         for (auto& s : estadosAceitacao) if (s == estado) return true;
         return false;
     }
+ 
+    // tira o topo da pilha e empilha os simbolos de t.empilhar (ultimo char = fundo)
     Config aplica(Config c, const Transicao& t) {
         c.estado = t.proximoEstado;
         c.pilha.pop();
@@ -99,34 +110,49 @@ private:
             c.pilha.push(t.empilhar[i]);
         return c;
     }
+ 
     void imprimeConfig(const string& estado, size_t pos, stack<char> pilha, const string& entrada) {
         string resto = entrada.substr(pos);
         if (resto.empty()) resto = "eps";
+ 
         string pilhaStr;
         while (!pilha.empty()) { pilhaStr += pilha.top(); pilha.pop(); }
         if (pilhaStr.empty()) pilhaStr = "vazia";
+ 
         cout << "  (" << estado << ", " << resto << ", " << pilhaStr << ")\n";
     }
 };
+ 
 PDA criaPDApadrao() {
     PDA pda;
     pda.estadoInicial = "q0";
     pda.simboloInicialPilha = 'Z';
     pda.estadosAceitacao = {"q2"};
+ 
     pda.addTransicao("q0", 'a', 'Z', "q0", "AZ");
     pda.addTransicao("q0", 'a', 'A', "q0", "AA");
     pda.addTransicao("q0", 'b', 'A', "q1", "");
     pda.addTransicao("q1", 'b', 'A', "q1", "");
     pda.addTransicao("q1", '\0', 'Z', "q2", "Z");
+ 
     return pda;
 }
-int main() {
-    PDA pda = criaPDApadrao();
+ 
+void testaPalavra(PDA& pda) {
+    cout << "Palavra: ";
+    string palavra;
+    getline(cin, palavra);
+    bool resultado = pda.aceita(palavra, true);
+    cout << (resultado ? "ACEITO" : "REJEITADO") << "\n";
+}
+ 
+void rodaTestes(PDA& pda) {
     vector<pair<string, bool>> testes = {
         {"ab", true}, {"aabb", true}, {"aaabbb", true},
         {"", false}, {"a", false}, {"b", false},
         {"ba", false}, {"aab", false}, {"abb", false}, {"abab", false},
     };
+ 
     int passou = 0;
     for (auto& [palavra, esperado] : testes) {
         bool resultado = pda.aceita(palavra, false);
@@ -137,5 +163,31 @@ int main() {
              << (resultado ? "aceitar" : "rejeitar") << (ok ? " ok" : " FALHOU") << "\n";
     }
     cout << passou << "/" << testes.size() << " testes passaram\n";
+}
+ 
+int main() {
+    PDA pda = criaPDApadrao();
+ 
+    while (true) {
+        cout << "\n--- PDA: a^n b^n ---\n";
+        cout << "1 - testar uma palavra\n";
+        cout << "2 - rodar testes padrao\n";
+        cout << "0 - sair\n";
+        cout << "opcao: ";
+ 
+        string opcao;
+        if (!getline(cin, opcao)) break;
+ 
+        if (opcao == "1") {
+            testaPalavra(pda);
+        } else if (opcao == "2") {
+            rodaTestes(pda);
+        } else if (opcao == "0") {
+            break;
+        } else {
+            cout << "opcao invalida\n";
+        }
+    }
+ 
     return 0;
 }
